@@ -82,12 +82,19 @@ using v8::Promise;
 using v8::PromiseRejectEvent;
 using v8::Uint32Array;
 
+struct buffer {
+  void* data;
+  size_t len;
+};
+
 struct builtin {
   unsigned int size;
   const char* source;
 };
 // todo: why is this static?
 static std::map<std::string, builtin*> builtins;
+
+buffer* getBuffer(Local<ArrayBuffer> ab);
 
 typedef void    (*InitModulesCallback) (Isolate*, Local<ObjectTemplate>);
 int CreateIsolate(int argc, char** argv, InitModulesCallback InitModules, 

@@ -37,15 +37,9 @@ runtime: builtins deps ## build dynamic runtime
 	$(CC) -s -rdynamic -pie -flto -pthread -m64 -Wl,--start-group deps/v8/libv8_monolith.a main.o just.o builtins.o -Wl,--end-group -ldl -lrt -o just
 
 runtime-builder: builtins-build deps modules/zlib/deps/zlib-1.2.11/libz.a ## build builder runtime
-	$(CC) -D_GNU_SOURCE -c -DSHARED -DBUILDER -std=c++11 -DV8_COMPRESS_POINTERS -I. -Imodules/zlib -Imodules/zlib/deps/zlib-1.2.11 -Ideps/v8/include -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter just.cc
+	$(CC) -D_GNU_SOURCE -c -DFASTBUFFERS -DSHARED -DBUILDER -std=c++11 -DV8_COMPRESS_POINTERS -I. -Imodules/zlib -Imodules/zlib/deps/zlib-1.2.11 -Ideps/v8/include -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter just.cc
 	$(CC) -c -DSHARED -DBUILDER -std=c++11 -DV8_COMPRESS_POINTERS -I. -Imodules/zlib -Imodules/zlib/deps/zlib-1.2.11 -Ideps/v8/include -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter main.cc
-	$(CC) -s -rdynamic -pie -flto -pthread -m64 -Wl,--start-group modules/zlib/zlib.a deps/v8/libv8_monolith.a main.o just.o builtins.o -Wl,--end-group -ldl -lrt -o just
-
-runtime-builder-deps: builtins-build-deps deps ## build builder with dependencies embedded in the binary
-	JUST_HOME=$(JUST_HOME) make -C modules/zlib/ deps zlib.a
-	$(CC) -c -DSHARED -DBUILDER -std=c++11 -DV8_COMPRESS_POINTERS -I. -Imodules/zlib -Ideps/v8/include -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter just.cc
-	$(CC) -c -DSHARED -DBUILDER -std=c++11 -DV8_COMPRESS_POINTERS -I. -Imodules/zlib -Ideps/v8/include -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter main.cc
-	$(CC) -s -rdynamic -pie -flto -pthread -m64 -Wl,--start-group modules/zlib/zlib.a deps/v8/libv8_monolith.a main.o just.o builtins.o -Wl,--end-group -ldl -lrt -o just
+	$(CC) -rdynamic -pie -flto -pthread -m64 -Wl,--start-group modules/zlib/zlib.a deps/v8/libv8_monolith.a main.o just.o builtins.o -Wl,--end-group -g -ldl -lrt -o just
 
 runtime-debug: builtins deps ## build debug version of runtime
 	$(CC) -c -DSHARED -std=c++11 -DV8_COMPRESS_POINTERS -I. -I./deps/v8/include -g -O3 -march=native -mtune=native -Wpedantic -Wall -Wextra -flto -Wno-unused-parameter just.cc

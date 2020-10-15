@@ -154,6 +154,32 @@ void just::SET_VALUE(Isolate *isolate, Local<ObjectTemplate>
     value);
 }
 
+#ifdef FASTBUFFERS
+just::buffer* just::getBuffer(Local<ArrayBuffer> ab) {
+  just::buffer* buf = (just::buffer*)ab->GetAlignedPointerFromInternalField(1);
+  if (buf == NULL) {
+    buf = new just::buffer();
+    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+    buf->data = backing->Data();
+    buf->len = backing->ByteLength();
+    ab->SetAlignedPointerInInternalField(1, buf);
+  }
+  return buf;
+}
+#else
+just::buffer* just::getBuffer(Local<ArrayBuffer> ab) {
+  just::buffer* buf = (just::buffer*)ab->GetAlignedPointerFromInternalField(1);
+  if (buf == NULL) {
+    buf = new just::buffer();
+    ab->SetAlignedPointerInInternalField(1, buf);
+  }
+  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+  buf->data = backing->Data();
+  buf->len = backing->ByteLength();
+  return buf;
+}
+#endif
+
 void just::PrintStackTrace(Isolate* isolate, const TryCatch& try_catch) {
   HandleScope handleScope(isolate);
   Local<Value> exception = try_catch.Exception();
@@ -793,8 +819,9 @@ void just::sys::HeapSpaceUsage(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::FreeMemory(void* buf, size_t length, void* data) {
-  free(buf);
-  free(data);
+  //fprintf(stderr, "free\n");
+  //free(buf);
+  //free(data);
 }
 
 void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
@@ -803,13 +830,13 @@ void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
   Local<Context> context = isolate->GetCurrentContext();
 
   Local<ArrayBuffer> abdest = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bdest = abdest->GetBackingStore();
-  char *dest = static_cast<char *>(bdest->Data());
+  just::buffer* buf = getBuffer(abdest);
+  char *dest = static_cast<char *>(buf->data);
 
   Local<ArrayBuffer> absource = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bsource = absource->GetBackingStore();
-  char *source = static_cast<char *>(bsource->Data());
-  int slen = bsource->ByteLength();
+  buf = getBuffer(absource);
+  char *source = static_cast<char *>(buf->data);
+  int slen = buf->len;
 
   int argc = args.Length();
   int off = 0;
@@ -885,9 +912,8 @@ void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
   HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  char *data = static_cast<char *>(backing->Data());
-  int len = backing->ByteLength();
+  just::buffer* buf = getBuffer(ab);
+  int len = buf->len;
   int argc = args.Length();
   if (argc > 1) {
     len = args[1]->Int32Value(context).ToChecked();
@@ -896,7 +922,7 @@ void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
   if (argc > 2) {
     off = args[2]->Int32Value(context).ToChecked();
   }
-  char* source = data + off;
+  char* source = (char*)buf->data + off;
   args.GetReturnValue().Set(String::NewFromUtf8(isolate, source, 
     NewStringType::kNormal, len).ToLocalChecked());
 }
@@ -905,9 +931,8 @@ void just::sys::GetAddress(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   HandleScope handleScope(isolate);
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  char *data = static_cast<char *>(backing->Data());
-  args.GetReturnValue().Set(BigInt::New(isolate, (uint64_t)data));
+  just::buffer* buf = getBuffer(ab);
+  args.GetReturnValue().Set(BigInt::New(isolate, (uint64_t)buf->data));
 }
 
 void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
@@ -920,8 +945,8 @@ void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
   if (args.Length() > 2) {
     off = args[2]->Int32Value(context).ToChecked();
   }
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  char *data = static_cast<char *>(backing->Data());
+  just::buffer* buf = getBuffer(ab);
+  char *data = static_cast<char *>(buf->data);
   char* source = data + off;
   int len = str->Utf8Length(isolate);
   int nchars = 0;
@@ -1011,8 +1036,6 @@ void just::sys::ReadMemory(const FunctionCallbackInfo<Value> &args) {
   HandleScope handleScope(isolate);
   Local<BigInt> start64 = Local<BigInt>::Cast(args[0]);
   Local<BigInt> end64 = Local<BigInt>::Cast(args[1]);
-  //Local<ArrayBuffer> ab = args[2].As<ArrayBuffer>();
-  //std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   const uint64_t size = end64->Uint64Value() - start64->Uint64Value();
   void* start = reinterpret_cast<void*>(start64->Uint64Value());
   // TODO: is this correct? will it leak?
@@ -1146,11 +1169,13 @@ void just::sys::MMap(const FunctionCallbackInfo<Value> &args) {
   if (data == MAP_FAILED) {
     return;
   }
-  std::unique_ptr<BackingStore> backing =
-      SharedArrayBuffer::NewBackingStore(data, len, 
-        FreeMemory, nullptr);
+  //std::unique_ptr<BackingStore> backing =
+  //    SharedArrayBuffer::NewBackingStore(data, len, 
+  //      FreeMemory, nullptr);
+  //Local<SharedArrayBuffer> ab =
+  //    SharedArrayBuffer::New(isolate, std::move(backing));
   Local<SharedArrayBuffer> ab =
-      SharedArrayBuffer::New(isolate, std::move(backing));
+      SharedArrayBuffer::New(isolate, data, len, ArrayBufferCreationMode::kExternalized);
   args.GetReturnValue().Set(ab);
 }
 
@@ -1228,6 +1253,7 @@ void just::sys::Init(Isolate* isolate, Local<ObjectTemplate> target) {
   SET_VALUE(isolate, sys, "PROT_READ", Integer::New(isolate, PROT_READ));
   SET_VALUE(isolate, sys, "PROT_WRITE", Integer::New(isolate, PROT_WRITE));
   SET_VALUE(isolate, sys, "MAP_SHARED", Integer::New(isolate, MAP_SHARED));
+  SET_VALUE(isolate, sys, "MAP_PRIVATE", Integer::New(isolate, MAP_PRIVATE));
   SET_VALUE(isolate, sys, "MAP_ANONYMOUS", Integer::New(isolate, MAP_ANONYMOUS));
   SET_VALUE(isolate, sys, "RTLD_NOW", Integer::New(isolate, RTLD_NOW));
   SET_VALUE(isolate, sys, "SIGTERM", Integer::New(isolate, SIGTERM));
@@ -1463,18 +1489,18 @@ void just::net::Read(const FunctionCallbackInfo<Value> &args) {
   HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   int fd = args[0]->Int32Value(context).ToChecked();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   int argc = args.Length();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+  just::buffer* buf = getBuffer(ab);
   int off = 0;
   if (argc > 2) {
     off = args[2]->Int32Value(context).ToChecked();
   }
-  int len = backing->ByteLength() - off;
+  int len = buf->len - off;
   if (argc > 3) {
     len = args[3]->Int32Value(context).ToChecked();
   }
-  const char* data = (const char*)backing->Data() + off;
+  const char* data = (const char*)buf->data + off;
   int r = read(fd, (void*)data, len);
   args.GetReturnValue().Set(Integer::New(isolate, r));
 }
@@ -1484,12 +1510,12 @@ void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   int fd = args[0]->Int32Value(context).ToChecked();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   int argc = args.Length();
   int flags = 0;
   int off = 0;
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  int len = backing->ByteLength() - off;
+  just::buffer* buf = getBuffer(ab);
+  int len = buf->len - off;
   if (argc > 2) {
     off = args[2]->Int32Value(context).ToChecked();
   }
@@ -1499,7 +1525,7 @@ void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   if (argc > 4) {
     flags = args[4]->Int32Value(context).ToChecked();
   }
-  const char* data = (const char*)backing->Data() + off;
+  const char* data = (const char*)buf->data + off;
   int r = recv(fd, (void*)data, len, flags);
   args.GetReturnValue().Set(Integer::New(isolate, r));
 }
@@ -1510,21 +1536,19 @@ void just::net::Write(const FunctionCallbackInfo<Value> &args) {
   Local<Context> context = isolate->GetCurrentContext();
   int fd = args[0]->Int32Value(context).ToChecked();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+  just::buffer* buf = getBuffer(ab);
   int argc = args.Length();
-  int len = 0;
+  int len = buf->len;
   if (argc > 2) {
     len = args[2]->Int32Value(context).ToChecked();
-  } else {
-    len = backing->ByteLength();
   }
   int off = 0;
   if (argc > 3) {
     off = args[3]->Int32Value(context).ToChecked();
   }
-  char* buf = (char*)backing->Data() + off;
+  char* b = (char*)buf->data + off;
   args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
-    buf, len)));
+    b, len)));
 }
 
 void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
@@ -1550,10 +1574,10 @@ void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   Local<Context> context = isolate->GetCurrentContext();
   Local<Object> obj;
   int fd = args[0]->Int32Value(context).ToChecked();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   int argc = args.Length();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  int len = backing->ByteLength();
+  just::buffer* buf = getBuffer(ab);
+  int len = buf->len;
   if (argc > 2) {
     len = args[2]->Int32Value(context).ToChecked();
   }
@@ -1565,7 +1589,7 @@ void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   if (argc > 4) {
     flags = args[4]->Int32Value(context).ToChecked();
   }
-  char* out = (char*)backing->Data() + off;
+  char* out = (char*)buf->data + off;
   int r = send(fd, out, len, flags);
   args.GetReturnValue().Set(Integer::New(isolate, r));
 }
@@ -1683,19 +1707,19 @@ void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
   HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   int loopfd = args[0]->Int32Value(context).ToChecked();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  struct epoll_event* events = (struct epoll_event*)backing->Data();
-  int size = backing->ByteLength() / 12;
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
+  just::buffer* buf = getBuffer(ab);
+  struct epoll_event* events = (struct epoll_event*)buf->data;
+  int size = buf->len / 12;
   int timeout = -1;
   int argc = args.Length();
   if (argc > 2) {
     timeout = args[2]->Int32Value(context).ToChecked();
   }
   if (argc > 3) {
-    Local<ArrayBuffer> buf = args[3].As<ArrayBuffer>();
-    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-    sigset_t* set = static_cast<sigset_t*>(backing->Data());
+    Local<ArrayBuffer> ab = args[3].As<ArrayBuffer>();
+    just::buffer* buf = getBuffer(ab);
+    sigset_t* set = static_cast<sigset_t*>(buf->data);
     int r = epoll_pwait(loopfd, events, size, timeout, set);
     args.GetReturnValue().Set(Integer::New(isolate, r));
     return;
@@ -2607,11 +2631,11 @@ void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   Local<Context> context = isolate->GetCurrentContext();
   int fd = args[0]->Uint32Value(context).ToChecked();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+  just::buffer* buf = getBuffer(ab);
   Local<Array> answer = args[2].As<Array>();
-  struct iovec buf;
-  buf.iov_base = backing->Data();
-  buf.iov_len = backing->ByteLength();
+  struct iovec b;
+  b.iov_base = buf->data;
+  b.iov_len = buf->len;
   char ip[INET_ADDRSTRLEN];
   int iplen = sizeof ip;
   struct sockaddr_storage peer;
@@ -2620,7 +2644,7 @@ void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   memset(&peer, 0, sizeof(peer));
   h.msg_name = &peer;
   h.msg_namelen = sizeof(peer);
-  h.msg_iov = &buf;
+  h.msg_iov = &b;
   h.msg_iovlen = 1;
   const sockaddr_in *a4 = reinterpret_cast<const sockaddr_in *>(&peer);
   int bytes = recvmsg(fd, &h, 0);
@@ -2642,16 +2666,16 @@ void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   int argc = args.Length();
   int fd = args[0]->Uint32Value(context).ToChecked();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+  just::buffer* buf = getBuffer(ab);
   String::Utf8Value address(args.GetIsolate(), args[2]);
   int port = args[3]->Uint32Value(context).ToChecked();
-  size_t len = backing->ByteLength();
+  size_t len = buf->len;
   if (argc > 4) {
     len = args[4]->Uint32Value(context).ToChecked();
   }
-  struct iovec buf;
-  buf.iov_base = backing->Data();
-  buf.iov_len = len;
+  struct iovec b;
+  b.iov_base = buf->data;
+  b.iov_len = len;
   struct msghdr h;
   memset(&h, 0, sizeof h);
   struct sockaddr_in client_addr;
@@ -2661,7 +2685,7 @@ void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   bzero(&(client_addr.sin_zero), 8);
   h.msg_name = &client_addr;
   h.msg_namelen = sizeof(struct sockaddr_in);
-  h.msg_iov = &buf;
+  h.msg_iov = &b;
   h.msg_iovlen = 1;
   args.GetReturnValue().Set(Integer::New(isolate, sendmsg(fd, &h, 0)));
 }
