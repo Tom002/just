@@ -129,7 +129,7 @@ function setTimeout (callback, timeout, repeat = 0, loop = just.factory.loop) {
   const fd = just.sys.timer(repeat, timeout)
   loop.add(fd, (fd, event) => {
     callback()
-    just.net.read(fd, buf)
+    just.net.read(fd, buf, buf.byteLength)
     if (repeat === 0) {
       loop.remove(fd)
       just.net.close(fd)
@@ -241,10 +241,10 @@ function main () {
     // todo: allow streaming in multiple scripts with a separator and running them all
     const buf = new ArrayBuffer(4096)
     const chunks = []
-    let bytes = net.read(sys.STDIN_FILENO, buf)
+    let bytes = net.read(sys.STDIN_FILENO, buf, buf.byteLength)
     while (bytes > 0) {
       chunks.push(buf.readString(bytes))
-      bytes = net.read(sys.STDIN_FILENO, buf)
+      bytes = net.read(sys.STDIN_FILENO, buf, buf.byteLength)
     }
     runScript(chunks.join(''), 'stdin')
     factory.run()

@@ -1550,10 +1550,10 @@ void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   int len = backing->ByteLength() - off;
   if (argc > 2) {
-    off = args[2].As<Int32>()->Value();
+    len = args[2].As<Int32>()->Value();
   }
   if (argc > 3) {
-    len = args[3].As<Int32>()->Value();
+    off = args[3].As<Int32>()->Value();
   }
   if (argc > 4) {
     flags = args[4].As<Int32>()->Value();
@@ -1841,7 +1841,6 @@ void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
     buf->SetAlignedPointerInInternalField(1, data);
   }
   struct epoll_event* events = (struct epoll_event*)data;
-  int argc = args.Length();
   int timeout = args[2].As<Int32>()->Value();
   int size = args[3].As<Int32>()->Value();
   int r = epoll_wait(loopfd, events, size, timeout);
@@ -1874,7 +1873,7 @@ void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
   struct epoll_event* events = (struct epoll_event*)data;
   int timeout = args[2].As<Int32>()->Value();
   int size = args[3].As<Int32>()->Value();
-  if (argc > 3) {
+  if (args.Length() > 3) {
     Local<ArrayBuffer> buf = args[3].As<ArrayBuffer>();
     std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
     sigset_t* set = static_cast<sigset_t*>(backing->Data());
@@ -2760,6 +2759,7 @@ void just::thread::Init(Isolate* isolate, Local<ObjectTemplate> target,
 #ifdef FASTBUFFERS
 void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
+  Local<Context> context = isolate->GetCurrentContext();
   int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
@@ -2833,7 +2833,6 @@ void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
 
 #ifdef FASTBUFFERS
 void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
-  int argc = args.Length();
   int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   void* data = ab->GetAlignedPointerFromInternalField(1);
