@@ -86,6 +86,7 @@ using v8::PromiseRejectMessage;
 using v8::Promise;
 using v8::PromiseRejectEvent;
 using v8::Uint32Array;
+using v8::Int32;
 
 struct builtin {
   unsigned int size;
@@ -211,6 +212,7 @@ namespace loop {
 void EpollCtl(const FunctionCallbackInfo<Value> &args);
 void EpollCreate(const FunctionCallbackInfo<Value> &args);
 void EpollWait(const FunctionCallbackInfo<Value> &args);
+void EpollPWait(const FunctionCallbackInfo<Value> &args);
 void Init(Isolate* isolate, Local<ObjectTemplate> target);
 }
 

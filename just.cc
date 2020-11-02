@@ -195,9 +195,8 @@ void just::PrintStackTrace(Isolate* isolate, const TryCatch& try_catch) {
 
 void just::Print(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   if (args[0].IsEmpty()) return;
-  String::Utf8Value str(args.GetIsolate(), args[0]);
+  String::Utf8Value str(isolate, args[0]);
   int endline = 1;
   if (args.Length() > 1) {
     endline = static_cast<int>(args[1]->BooleanValue(isolate));
@@ -212,9 +211,8 @@ void just::Print(const FunctionCallbackInfo<Value> &args) {
 
 void just::Error(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   if (args[0].IsEmpty()) return;
-  String::Utf8Value str(args.GetIsolate(), args[0]);
+  String::Utf8Value str(isolate, args[0]);
   int endline = 1;
   if (args.Length() > 1) {
     endline = static_cast<int>(args[1]->BooleanValue(isolate));
@@ -228,6 +226,7 @@ void just::Error(const FunctionCallbackInfo<Value> &args) {
 }
 
 v8::Local<v8::String> just::ReadFile(Isolate *isolate, const char *name) {
+  HandleScope handleScope(isolate);
   FILE *file = fopen(name, "rb");
   if (file == NULL) {
     isolate->ThrowException(Exception::Error(
@@ -258,13 +257,11 @@ v8::Local<v8::String> just::ReadFile(Isolate *isolate, const char *name) {
 
 v8::MaybeLocal<v8::Module> just::OnModuleInstantiate(Local<Context> context, 
   Local<String> specifier, Local<Module> referrer) {
-  HandleScope handle_scope(context->GetIsolate());
   return MaybeLocal<Module>();
 }
 
 void just::vm::CompileScript(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   TryCatch try_catch(isolate);
   Local<String> source = args[0].As<String>();
@@ -309,7 +306,6 @@ void just::vm::CompileScript(const FunctionCallbackInfo<Value> &args) {
 
 void just::vm::RunModule(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   TryCatch try_catch(isolate);
   Local<String> source = args[0].As<String>();
@@ -350,7 +346,6 @@ void just::vm::RunModule(const FunctionCallbackInfo<Value> &args) {
 
 void just::vm::Builtin(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value name(isolate, args[0]);
   builtin* b = builtins[*name];
   if (b == nullptr) {
@@ -363,7 +358,6 @@ void just::vm::Builtin(const FunctionCallbackInfo<Value> &args) {
 
 void just::vm::RunScript(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   TryCatch try_catch(isolate);
   Local<String> source = args[0].As<String>();
@@ -404,15 +398,12 @@ void just::vm::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::sys::WaitPID(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> ab = args[0].As<Int32Array>()->Buffer();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   int *fields = static_cast<int *>(backing->Data());
   int pid = -1;
   if (args.Length() > 1) {
-    pid = args[1]->IntegerValue(context).ToChecked();
+    pid = args[1].As<Int32>()->Value();
   }
   fields[1] = waitpid(pid, &fields[0], WNOHANG);
   fields[0] = WEXITSTATUS(fields[0]); 
@@ -421,15 +412,14 @@ void just::sys::WaitPID(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::Spawn(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   String::Utf8Value filePath(isolate, args[0]);
   String::Utf8Value cwd(isolate, args[1]);
   Local<Array> arguments = args[2].As<Array>();
   int fds[3];
-  fds[0] = args[3]->IntegerValue(context).ToChecked();
-  fds[1] = args[4]->IntegerValue(context).ToChecked();
-  fds[2] = args[5]->IntegerValue(context).ToChecked();
+  fds[0] = args[3].As<Int32>()->Value();
+  fds[1] = args[4].As<Int32>()->Value();
+  fds[2] = args[5].As<Int32>()->Value();
   int len = arguments->Length();
   char** argv = (char**)calloc(len + 2, sizeof(char*));
   //char* argv[len + 2];
@@ -437,6 +427,7 @@ void just::sys::Spawn(const FunctionCallbackInfo<Value> &args) {
   argv[0] = (char*)calloc(1, filePath.length());
   memcpy(argv[0], *filePath, filePath.length());
   for (int i = 0; i < len; i++) {
+    // todo: this does not look right
     Local<String> val = 
       arguments->Get(context, i).ToLocalChecked().As<v8::String>();
     argv[i + 1] = (char*)calloc(1, val->Length());
@@ -487,8 +478,6 @@ void just::sys::Spawn(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::HRTime(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<BigUint64Array> b64 = args[0].As<BigUint64Array>();
   Local<ArrayBuffer> ab = b64->Buffer();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
@@ -498,33 +487,21 @@ void just::sys::HRTime(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::RunMicroTasks(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  isolate->PerformMicrotaskCheckpoint();
-  //MicrotasksScope::PerformCheckpoint(isolate);
+  args.GetIsolate()->PerformMicrotaskCheckpoint();
 }
 
 void just::sys::EnqueueMicrotask(const FunctionCallbackInfo<Value>& args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  isolate->EnqueueMicrotask(args[0].As<Function>());
+  args.GetIsolate()->EnqueueMicrotask(args[0].As<Function>());
 }
 
 void just::sys::Exit(const FunctionCallbackInfo<Value>& args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int status = args[0]->Int32Value(context).ToChecked();
-  exit(status);
+  exit(args[0].As<Int32>()->Value());
 }
 
 void just::sys::Kill(const FunctionCallbackInfo<Value>& args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int pid = args[0]->Int32Value(context).ToChecked();
-  int signum = args[1]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, kill(pid, signum)));
+  int pid = args[0].As<Int32>()->Value();
+  int signum = args[1].As<Int32>()->Value();
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), kill(pid, signum)));
 }
 
 //TODO: CPU Info:
@@ -534,7 +511,6 @@ https://github.com/libuv/libuv/blob/c70dd705bc2adc488ddffcdc12f0c610d116e77b/src
 */
 void just::sys::CPUUsage(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   struct tms stat;
   clock_t c = times(&stat);
   args.GetReturnValue().Set(Integer::New(isolate, c));
@@ -552,8 +528,6 @@ void just::sys::CPUUsage(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::GetrUsage(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   struct rusage usage;
   // todo: can use RUSAGE_THREAD to get thread (self) usage
   getrusage(RUSAGE_SELF, &usage);
@@ -582,57 +556,35 @@ void just::sys::GetrUsage(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::PID(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  args.GetReturnValue().Set(Integer::New(isolate, getpid()));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), getpid()));
 }
 
 void just::sys::Errno(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  args.GetReturnValue().Set(Integer::New(isolate, errno));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), errno));
 }
 
 void just::sys::StrError(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int err = args[0]->IntegerValue(context).ToChecked();
-  args.GetReturnValue().Set(String::NewFromUtf8(isolate, 
-    strerror(err)).ToLocalChecked());
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), 
+    strerror(args[0].As<Int32>()->Value())).ToLocalChecked());
 }
 
 void just::sys::Sleep(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int seconds = args[0]->IntegerValue(context).ToChecked();
-  sleep(seconds);
+  sleep(args[0].As<Int32>()->Value());
 }
 
 void just::sys::USleep(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int microseconds = args[0]->IntegerValue(context).ToChecked();
-  usleep(microseconds);
+  usleep(args[0].As<Int32>()->Value());
 }
 
 void just::sys::NanoSleep(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int seconds = args[0]->IntegerValue(context).ToChecked();
-  int nanoseconds = args[1]->IntegerValue(context).ToChecked();
   struct timespec sleepfor;
-  sleepfor.tv_sec = seconds;
-  sleepfor.tv_nsec = nanoseconds;
+  sleepfor.tv_sec = args[0].As<Int32>()->Value();
+  sleepfor.tv_nsec = args[1].As<Int32>()->Value();
   nanosleep(&sleepfor, NULL);
 }
 
 void just::sys::MemoryUsage(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   ssize_t rss = process_memory_usage();
   HeapStatistics v8_heap_stats;
   isolate->GetHeapStatistics(&v8_heap_stats);
@@ -659,7 +611,6 @@ void just::sys::MemoryUsage(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::SharedMemoryUsage(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   v8::SharedMemoryStatistics sm_stats;
   v8::V8::GetSharedMemoryStatistics(&sm_stats);
@@ -679,7 +630,6 @@ void just::sys::SharedMemoryUsage(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::HeapObjectStatistics(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   v8::HeapObjectStatistics obj_stats;
   size_t num_types = isolate->NumberOfTrackedHeapObjectTypes();
@@ -710,7 +660,6 @@ void just::sys::HeapObjectStatistics(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::HeapCodeStatistics(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   v8::HeapCodeStatistics code_stats;
   isolate->GetHeapCodeAndMetadataStatistics(&code_stats);
@@ -729,7 +678,6 @@ void just::sys::HeapCodeStatistics(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::HeapSpaceUsage(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   HeapSpaceStatistics s;
   size_t number_of_heap_spaces = isolate->NumberOfHeapSpaces();
@@ -812,52 +760,75 @@ void just::sys::FreeMappedMemory(void* buf, size_t length, void* data) {
   munmap(buf, length);
 }
 
+#ifdef FASTBUFFERS
 void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-
   Local<ArrayBuffer> abdest = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bdest = abdest->GetBackingStore();
-  char *dest = static_cast<char *>(bdest->Data());
-
+  void* data = abdest->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = abdest->GetBackingStore();
+    data = backing->Data();
+    abdest->SetAlignedPointerInInternalField(1, data);
+  }
+  char *dest = static_cast<char *>(data);
   Local<ArrayBuffer> absource = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bsource = absource->GetBackingStore();
-  char *source = static_cast<char *>(bsource->Data());
-  int slen = bsource->ByteLength();
-
+  data = absource->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = absource->GetBackingStore();
+    data = backing->Data();
+    absource->SetAlignedPointerInInternalField(1, data);
+  }
+  char *source = static_cast<char *>(data);
+  int len = args[2].As<Int32>()->Value();
   int argc = args.Length();
   int off = 0;
-  if (argc > 2) {
-    off = args[2]->Int32Value(context).ToChecked();
-  }
-  int len = slen;
   if (argc > 3) {
-    len = args[3]->Int32Value(context).ToChecked();
+    off = args[3].As<Int32>()->Value();
   }
   int off2 = 0;
   if (argc > 4) {
-    off2 = args[4]->Int32Value(context).ToChecked();
+    off2 = args[4].As<Int32>()->Value();
   }
   if (len == 0) return;
   dest = dest + off;
   source = source + off2;
   memcpy(dest, source, len);
-  args.GetReturnValue().Set(Integer::New(isolate, len));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), len));
 }
+#else
+void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
+  Local<ArrayBuffer> abdest = args[0].As<ArrayBuffer>();
+  std::shared_ptr<BackingStore> bdest = abdest->GetBackingStore();
+  char *dest = static_cast<char *>(bdest->Data());
+  Local<ArrayBuffer> absource = args[1].As<ArrayBuffer>();
+  std::shared_ptr<BackingStore> bsource = absource->GetBackingStore();
+  char *source = static_cast<char *>(bsource->Data());
+  int argc = args.Length();
+  int len = args[2].As<Int32>()->Value();
+  int off = 0;
+  if (argc > 3) {
+    off = args[3].As<Int32>()->Value();
+  }
+  int off2 = 0;
+  if (argc > 4) {
+    off2 = args[4].As<Int32>()->Value();
+  }
+  if (len == 0) return;
+  dest = dest + off;
+  source = source + off2;
+  memcpy(dest, source, len);
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), len));
+}
+#endif
 
 void just::sys::Utf8Length(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<String> str = args[0].As<String>();
   args.GetReturnValue().Set(Integer::New(isolate, str->Utf8Length(isolate)));
 }
 
 void just::sys::Calloc(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  uint32_t count = args[0]->Uint32Value(context).ToChecked();
+  uint32_t count = args[0].As<Int32>()->Value();
   uint32_t size = 0;
   void* chunk;
   if (args[1]->IsString()) {
@@ -872,7 +843,7 @@ void just::sys::Calloc(const FunctionCallbackInfo<Value> &args) {
       next += written;
     }
   } else {
-    size = args[1]->Uint32Value(context).ToChecked();
+    size = args[1].As<Int32>()->Value();
     chunk = calloc(count, size);
   }
   bool shared = false;
@@ -895,34 +866,49 @@ void just::sys::Calloc(const FunctionCallbackInfo<Value> &args) {
   }
 }
 
+#ifdef FASTBUFFERS
 void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
+  Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
+  void* data = ab->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+    data = backing->Data();
+    ab->SetAlignedPointerInInternalField(1, data);
+  }
+  int len = args[1].As<Int32>()->Value();
+  int off = 0;
+  if (args.Length() > 2) {
+    off = args[2].As<Int32>()->Value();
+  }
+  char* source = (char*)data + off;
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), source, 
+    NewStringType::kNormal, len).ToLocalChecked());
+}
+#else
+void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   char *data = static_cast<char *>(backing->Data());
   int len = backing->ByteLength();
   int argc = args.Length();
   if (argc > 1) {
-    len = args[1]->Int32Value(context).ToChecked();
+    len = args[1].As<Int32>()->Value();
   }
   int off = 0;
   if (argc > 2) {
-    off = args[2]->Int32Value(context).ToChecked();
+    off = args[2].As<Int32>()->Value();
   }
   char* source = data + off;
-  args.GetReturnValue().Set(String::NewFromUtf8(isolate, source, 
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), source, 
     NewStringType::kNormal, len).ToLocalChecked());
 }
+#endif
 
 void just::sys::GetAddress(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   char *data = static_cast<char *>(backing->Data());
-  args.GetReturnValue().Set(BigInt::New(isolate, (uint64_t)data));
+  args.GetReturnValue().Set(BigInt::New(args.GetIsolate(), (uint64_t)data));
 }
 
 /*
@@ -934,15 +920,35 @@ void just::sys::GetStringAddress(const FunctionCallbackInfo<Value> &args) {
 }
 */
 
+#ifdef FASTBUFFERS
 void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
+  Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
+  void* data = ab->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+    data = backing->Data();
+    ab->SetAlignedPointerInInternalField(1, data);
+  }
+  Local<String> str = args[1].As<String>();
+  int off = 0;
+  if (args.Length() > 2) {
+    off = args[2].As<Int32>()->Value();
+  }
+  char* source = (char*)data + off;
+  int len = str->Utf8Length(isolate);
+  int nchars = 0;
+  int written = str->WriteUtf8(isolate, source, len, &nchars, v8::String::HINT_MANY_WRITES_EXPECTED | v8::String::NO_NULL_TERMINATION);
+  args.GetReturnValue().Set(Integer::New(isolate, written));
+}
+#else
+void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
+  Isolate *isolate = args.GetIsolate();
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
   Local<String> str = args[1].As<String>();
   int off = 0;
   if (args.Length() > 2) {
-    off = args[2]->Int32Value(context).ToChecked();
+    off = args[2].As<Int32>()->Value();
   }
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   char *data = static_cast<char *>(backing->Data());
@@ -952,15 +958,14 @@ void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
   int written = str->WriteUtf8(isolate, source, len, &nchars, v8::String::HINT_MANY_WRITES_EXPECTED | v8::String::NO_NULL_TERMINATION);
   args.GetReturnValue().Set(Integer::New(isolate, written));
 }
+#endif
 
 void just::sys::Fcntl(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int flags = args[1]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  int flags = args[1].As<Int32>()->Value();
   if (args.Length() > 2) {
-    int val = args[2]->Int32Value(context).ToChecked();
+    int val = args[2].As<Int32>()->Value();
     args.GetReturnValue().Set(Integer::New(isolate, fcntl(fd, flags, val)));
     return;
   }
@@ -968,16 +973,13 @@ void just::sys::Fcntl(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::Cwd(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   char cwd[PATH_MAX];
-  args.GetReturnValue().Set(String::NewFromUtf8(isolate, getcwd(cwd, PATH_MAX), 
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), getcwd(cwd, PATH_MAX), 
     NewStringType::kNormal).ToLocalChecked());
 }
 
 void just::sys::Env(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   int size = 0;
   while (environ[size]) size++;
@@ -992,18 +994,16 @@ void just::sys::Env(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::Timer(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int t1 = args[0]->Int32Value(context).ToChecked();
-  int t2 = args[1]->Int32Value(context).ToChecked();
+  int t1 = args[0].As<Int32>()->Value();
+  int t2 = args[1].As<Int32>()->Value();
   int argc = args.Length();
   clockid_t cid = CLOCK_MONOTONIC;
   if (argc > 2) {
-    cid = (clockid_t)args[2]->Int32Value(context).ToChecked();
+    cid = (clockid_t)args[2].As<Int32>()->Value();
   }
   int flags = TFD_NONBLOCK | TFD_CLOEXEC;
   if (argc > 3) {
-    flags = args[3]->Int32Value(context).ToChecked();
+    flags = args[3].As<Int32>()->Value();
   }
   int fd = timerfd_create(cid, flags);
   if (fd == -1) {
@@ -1024,19 +1024,12 @@ void just::sys::Timer(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::sys::AvailablePages(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  long available_pages = sysconf(_SC_AVPHYS_PAGES);
-  args.GetReturnValue().Set(Integer::New(isolate, available_pages));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sysconf(_SC_AVPHYS_PAGES)));
 }
 
 void just::sys::ReadMemory(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<BigInt> start64 = Local<BigInt>::Cast(args[0]);
   Local<BigInt> end64 = Local<BigInt>::Cast(args[1]);
-  //Local<ArrayBuffer> ab = args[2].As<ArrayBuffer>();
-  //std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   const uint64_t size = end64->Uint64Value() - start64->Uint64Value();
   void* start = reinterpret_cast<void*>(start64->Uint64Value());
   // TODO: is this correct? will it leak?
@@ -1044,20 +1037,18 @@ void just::sys::ReadMemory(const FunctionCallbackInfo<Value> &args) {
       ArrayBuffer::NewBackingStore(start, size, 
         UnwrapMemory, nullptr);
   Local<ArrayBuffer> ab =
-      ArrayBuffer::New(isolate, std::move(backing));
+      ArrayBuffer::New(args.GetIsolate(), std::move(backing));
   args.GetReturnValue().Set(ab);
 }
 
 #ifdef SHARED
 void just::sys::DLOpen(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   int argc = args.Length();
   int mode = RTLD_NOW;
   void* handle;
   if (argc > 1) {
-    mode = args[1]->Int32Value(context).ToChecked();
+    mode = args[1].As<Int32>()->Value();
   }
   if (argc > 0) {
     String::Utf8Value path(isolate, args[0]);
@@ -1075,7 +1066,6 @@ void just::sys::DLOpen(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::DLSym(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<BigInt> address64 = Local<BigInt>::Cast(args[0]);
   // todo: this is very dangerous. need to have a think on how best to do this
   void* handle = reinterpret_cast<void*>(address64->Uint64Value());
@@ -1090,7 +1080,6 @@ void just::sys::DLSym(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::DLError(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   char* err = dlerror();
   if (err == NULL) {
     args.GetReturnValue().Set(v8::Null(isolate));
@@ -1102,7 +1091,6 @@ void just::sys::DLError(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::DLClose(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<BigInt> address64 = Local<BigInt>::Cast(args[0]);
   void* handle = reinterpret_cast<void*>(address64->Uint64Value());
   int r = dlclose(handle);
@@ -1111,7 +1099,6 @@ void just::sys::DLClose(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::Library(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   Local<BigInt> address64 = Local<BigInt>::Cast(args[0]);
   void* ptr = reinterpret_cast<void*>(address64->Uint64Value());
@@ -1125,46 +1112,40 @@ void just::sys::Library(const FunctionCallbackInfo<Value> &args) {
 
 void just::sys::ShmOpen(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   String::Utf8Value name(isolate, args[0]);
   int argc = args.Length();
   int flags = O_RDONLY;
   if (argc > 1) {
-    flags = args[1]->Int32Value(context).ToChecked();
+    flags = args[1].As<Int32>()->Value();
   }
   int mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
   if (argc > 2) {
-    mode = args[2]->Int32Value(context).ToChecked();
+    mode = args[2].As<Int32>()->Value();
   }
   args.GetReturnValue().Set(Integer::New(isolate, shm_open(*name, flags, mode)));
 }
 
 void just::sys::ShmUnlink(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value name(isolate, args[0]);
   args.GetReturnValue().Set(Integer::New(isolate, shm_unlink(*name)));
 }
 
 void just::sys::MMap(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   int argc = args.Length();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int len = args[1]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  int len = args[1].As<Int32>()->Value();
   int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_SHARED;
   size_t offset = 0;
   if (argc > 2) {
-    prot = args[2]->Int32Value(context).ToChecked();
+    prot = args[2].As<Int32>()->Value();
   }
   if (argc > 3) {
-    flags = args[3]->Int32Value(context).ToChecked();
+    flags = args[3].As<Int32>()->Value();
   }
   if (argc > 4) {
-    offset = args[4]->Int32Value(context).ToChecked();
+    offset = args[4].As<Int32>()->Value();
   }
   void* data = mmap(0, len, prot, flags, fd, offset);
   if (data == MAP_FAILED) {
@@ -1174,19 +1155,16 @@ void just::sys::MMap(const FunctionCallbackInfo<Value> &args) {
       SharedArrayBuffer::NewBackingStore(data, len, 
         FreeMappedMemory, nullptr);
   Local<SharedArrayBuffer> ab =
-      SharedArrayBuffer::New(isolate, std::move(backing));
+      SharedArrayBuffer::New(args.GetIsolate(), std::move(backing));
   args.GetReturnValue().Set(ab);
 }
 
 void just::sys::MUnmap(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<SharedArrayBuffer> ab = args[0].As<SharedArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  int len = args[1]->Int32Value(context).ToChecked();
+  int len = args[1].As<Int32>()->Value();
   int r = munmap(backing->Data(), len);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
 
 void just::sys::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -1276,37 +1254,29 @@ void just::sys::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::net::Socket(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int domain = args[0]->Int32Value(context).ToChecked();
-  int type = args[1]->Int32Value(context).ToChecked();
+  int domain = args[0].As<Int32>()->Value();
+  int type = args[1].As<Int32>()->Value();
   int protocol = 0;
   if (args.Length() > 2) {
-    protocol = args[2]->Int32Value(context).ToChecked();
+    protocol = args[2].As<Int32>()->Value();
   }
-  args.GetReturnValue().Set(Integer::New(isolate, socket(domain, type, protocol)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), socket(domain, type, protocol)));
 }
 
 void just::net::SetSockOpt(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int level = args[1]->Int32Value(context).ToChecked();
-  int option = args[2]->Int32Value(context).ToChecked();
-  int value = args[3]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, setsockopt(fd, level, 
+  int fd = args[0].As<Int32>()->Value();
+  int level = args[1].As<Int32>()->Value();
+  int option = args[2].As<Int32>()->Value();
+  int value = args[3].As<Int32>()->Value();
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), setsockopt(fd, level, 
     option, &value, sizeof(int))));
 }
 
 void just::net::GetSockOpt(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int level = args[1]->Int32Value(context).ToChecked();
-  int option = args[2]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  int level = args[1].As<Int32>()->Value();
+  int option = args[2].As<Int32>()->Value();
   int options = 0;
   socklen_t optlen = sizeof(options);
   int r = getsockopt(fd, level, option, &options, &optlen);
@@ -1319,10 +1289,9 @@ void just::net::GetSockOpt(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::GetSockName(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int domain = args[1]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  int domain = args[1].As<Int32>()->Value();
   if (domain == AF_INET) {
     Local<Array> answer = args[2].As<Array>();
     struct sockaddr_in address;
@@ -1348,10 +1317,9 @@ void just::net::GetSockName(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::GetPeerName(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int domain = args[1]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  int domain = args[1].As<Int32>()->Value();
   if (domain == AF_INET) {
     Local<Array> answer = args[2].As<Array>();
     struct sockaddr_in address;
@@ -1376,20 +1344,16 @@ void just::net::GetPeerName(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::net::Listen(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int backlog = args[1]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, listen(fd, backlog)));
+  int fd = args[0].As<Int32>()->Value();
+  int backlog = args[1].As<Int32>()->Value();
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), listen(fd, backlog)));
 }
 
 void just::net::SocketPair(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
-  int domain = args[0]->Int32Value(context).ToChecked();
-  int type = args[1]->Int32Value(context).ToChecked();
+  int domain = args[0].As<Int32>()->Value();
+  int type = args[1].As<Int32>()->Value();
   Local<Array> answer = args[2].As<Array>();
   int fd[2];
   int r = socketpair(domain, type, 0, fd);
@@ -1402,7 +1366,6 @@ void just::net::SocketPair(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::Pipe(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   Local<Array> answer = args[0].As<Array>();
   int fd[2];
@@ -1416,14 +1379,12 @@ void just::net::Pipe(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::Connect(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   int r = 0;
   if (args.Length() > 2) {
     int socktype = AF_INET;
     String::Utf8Value address(isolate, args[1]);
-    int port = args[2]->Int32Value(context).ToChecked();
+    int port = args[2].As<Int32>()->Value();
     struct sockaddr_in server_addr;
     server_addr.sin_family = socktype;
     server_addr.sin_port = htons(port);
@@ -1442,14 +1403,12 @@ void just::net::Connect(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::Bind(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   int r = 0;
   if (args.Length() > 2) {
     int socktype = AF_INET;
     String::Utf8Value address(isolate, args[1]);
-    int port = args[2]->Int32Value(context).ToChecked();
+    int port = args[2].As<Int32>()->Value();
     struct sockaddr_in server_addr;
     server_addr.sin_family = socktype;
     server_addr.sin_port = htons(port);
@@ -1468,22 +1427,20 @@ void just::net::Bind(const FunctionCallbackInfo<Value> &args) {
 
 void just::net::BindInterface(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   String::Utf8Value name(isolate, args[1]);
   int argc = args.Length();
   int family = AF_PACKET;
   if (argc > 2) {
-    family = args[2]->Int32Value(context).ToChecked();
+    family = args[2].As<Int32>()->Value();
   }
   int protocol = htons(ETH_P_ALL);
   if (argc > 3) {
-    protocol = args[3]->Int32Value(context).ToChecked();
+    protocol = args[3].As<Int32>()->Value();
   }
   int packetType = 0;
   if (argc > 4) {
-    packetType = args[4]->Int32Value(context).ToChecked();
+    packetType = args[4].As<Int32>()->Value();
   }
   struct ifreq ifr;
   memset(&ifr,0,sizeof(ifr));
@@ -1504,57 +1461,88 @@ void just::net::BindInterface(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::net::Accept(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, accept(fd, NULL, NULL)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), accept(args[0].As<Int32>()->Value(), NULL, NULL)));
 }
 
 void just::net::Seek(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   int argc = args.Length();
   off_t off = 0;
   if (argc > 1) {
-    off = args[1]->Int32Value(context).ToChecked();
+    off = args[1].As<Int32>()->Value();
   }
   int whence = SEEK_SET;
   if (argc > 2) {
-    whence = args[2]->Int32Value(context).ToChecked();
+    whence = args[2].As<Int32>()->Value();
   }
   off_t r = lseek(fd, off, whence);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
 
+#ifdef FASTBUFFERS
 void just::net::Read(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
+  }
+  if (args.Length() > 3) {
+    char* next = (char*)data + args[3].As<Int32>()->Value();
+    args.GetReturnValue().Set(Integer::New(isolate, read(fd, next, args[2].As<Int32>()->Value())));
+    return;
+  }
+  args.GetReturnValue().Set(Integer::New(isolate, read(fd, data, args[2].As<Int32>()->Value())));
+}
+#else
+void just::net::Read(const FunctionCallbackInfo<Value> &args) {
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
   int argc = args.Length();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   int off = 0;
   if (argc > 2) {
-    off = args[2]->Int32Value(context).ToChecked();
+    off = args[2].As<Int32>()->Value();
   }
   int len = backing->ByteLength() - off;
   if (argc > 3) {
-    len = args[3]->Int32Value(context).ToChecked();
+    len = args[3].As<Int32>()->Value();
   }
-  const char* data = (const char*)backing->Data() + off;
-  int r = read(fd, (void*)data, len);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  char* data = (char*)backing->Data() + off;
+  int r = read(fd, data, len);
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
+#endif
 
+#ifdef FASTBUFFERS
 void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  int flags = 0;
+  int argc = args.Length();
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
+  }
+  if (argc > 4) {
+    flags = args[4].As<Int32>()->Value();
+  }
+  if (argc > 3) {
+    char* next = (char*)data + args[3].As<Int32>()->Value();
+    args.GetReturnValue().Set(Integer::New(isolate, recv(fd, next, args[2].As<Int32>()->Value(), flags)));
+    return;
+  }
+  args.GetReturnValue().Set(Integer::New(isolate, recv(fd, data, args[2].As<Int32>()->Value(), flags)));
+}
+#else
+void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
   int argc = args.Length();
   int flags = 0;
@@ -1562,119 +1550,170 @@ void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   int len = backing->ByteLength() - off;
   if (argc > 2) {
-    off = args[2]->Int32Value(context).ToChecked();
+    off = args[2].As<Int32>()->Value();
   }
   if (argc > 3) {
-    len = args[3]->Int32Value(context).ToChecked();
+    len = args[3].As<Int32>()->Value();
   }
   if (argc > 4) {
-    flags = args[4]->Int32Value(context).ToChecked();
+    flags = args[4].As<Int32>()->Value();
   }
   const char* data = (const char*)backing->Data() + off;
   int r = recv(fd, (void*)data, len, flags);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
-
+#endif
+#ifdef FASTBUFFERS
 void just::net::Write(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
+  }
+  if (args.Length() > 3) {
+    char* next = (char*)data + args[3].As<Int32>()->Value();
+    args.GetReturnValue().Set(Integer::New(isolate, write(fd, next, args[2].As<Int32>()->Value())));
+    return;
+  }
+  args.GetReturnValue().Set(Integer::New(isolate, write(fd, data, args[2].As<Int32>()->Value())));
+}
+#else
+void just::net::Write(const FunctionCallbackInfo<Value> &args) {
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   int argc = args.Length();
   int len = 0;
   if (argc > 2) {
-    len = args[2]->Int32Value(context).ToChecked();
+    len = args[2].As<Int32>()->Value();
   } else {
     len = backing->ByteLength();
   }
   int off = 0;
   if (argc > 3) {
-    off = args[3]->Int32Value(context).ToChecked();
+    off = args[3].As<Int32>()->Value();
   }
   char* buf = (char*)backing->Data() + off;
-  args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), write(fd, 
     buf, len)));
 }
+#endif
 
+#ifdef FASTBUFFERS
 void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  String::Utf8Value str(args.GetIsolate(), args[1]);
+  int fd = args[0].As<Int32>()->Value();
+  String::Utf8Value str(isolate, args[1]);
+  args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
+    *str, str.length())));
+}
+#else
+void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
+  Isolate *isolate = args.GetIsolate();
+  int fd = args[0].As<Int32>()->Value();
+  String::Utf8Value str(isolate, args[1]);
   int len = str.length();
   args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
     *str, len)));
 }
+#endif
 
 void just::net::Writev(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  args.GetReturnValue().Set(Integer::New(isolate, 0));
+  fprintf(stderr, "Not Implemented\n");
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), 0));
 }
 
+#ifdef FASTBUFFERS
 void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  int flags = MSG_NOSIGNAL;
+  int argc = args.Length();
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
+  }
+  if (argc > 4) {
+    flags = args[4].As<Int32>()->Value();
+  }
+  if (argc > 3) {
+    char* next = (char*)data + args[3].As<Int32>()->Value();
+    args.GetReturnValue().Set(Integer::New(isolate, send(fd, next, args[2].As<Int32>()->Value(), flags)));
+    return;
+  }
+  args.GetReturnValue().Set(Integer::New(isolate, send(fd, data, args[2].As<Int32>()->Value(), flags)));
+}
+#else
+void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   Local<Object> obj;
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
   int argc = args.Length();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   int len = backing->ByteLength();
   if (argc > 2) {
-    len = args[2]->Int32Value(context).ToChecked();
+    len = args[2].As<Int32>()->Value();
   }
   int off = 0;
   if (argc > 3) {
-    off = args[3]->Int32Value(context).ToChecked();
+    off = args[3].As<Int32>()->Value();
   }
   int flags = MSG_NOSIGNAL;
   if (argc > 4) {
-    flags = args[4]->Int32Value(context).ToChecked();
+    flags = args[4].As<Int32>()->Value();
   }
   char* out = (char*)backing->Data() + off;
   int r = send(fd, out, len, flags);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
+#endif
 
+#ifdef FASTBUFFERS
 void just::net::SendString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  String::Utf8Value str(args.GetIsolate(), args[1]);
+  int fd = args[0].As<Int32>()->Value();
+  String::Utf8Value str(isolate, args[1]);
+  int flags = MSG_NOSIGNAL;
+  if (args.Length() > 2) {
+    flags = args[2].As<Int32>()->Value();
+  }
+  args.GetReturnValue().Set(Integer::New(isolate, send(fd, 
+    *str, str.length(), flags)));
+}
+#else
+void just::net::SendString(const FunctionCallbackInfo<Value> &args) {
+  Isolate *isolate = args.GetIsolate();
+  int fd = args[0].As<Int32>()->Value();
+  String::Utf8Value str(isolate, args[1]);
   int argc = args.Length();
   int flags = MSG_NOSIGNAL;
   if (argc > 2) {
-    flags = args[2]->Int32Value(context).ToChecked();
+    flags = args[2].As<Int32>()->Value();
   }
   int len = str.length();
   args.GetReturnValue().Set(Integer::New(isolate, send(fd, 
     *str, len, flags)));
 }
+#endif
 
 void just::net::Close(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, close(fd)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), close(args[0].As<Int32>()->Value())));
 }
 
 void just::net::Shutdown(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   int how = SHUT_RDWR;
   if (args.Length() > 1) {
-    how = args[1]->Int32Value(context).ToChecked();
+    how = args[1].As<Int32>()->Value();
   }
-  args.GetReturnValue().Set(Integer::New(isolate, shutdown(fd, how)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), shutdown(fd, how)));
 }
 
 void just::net::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -1776,42 +1815,65 @@ void just::net::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::loop::EpollCtl(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int loopfd = args[0]->Int32Value(context).ToChecked();
-  int action = args[1]->Int32Value(context).ToChecked();
-  int fd = args[2]->Int32Value(context).ToChecked();
-  int mask = args[3]->Int32Value(context).ToChecked();
+  int loopfd = args[0].As<Int32>()->Value();
+  int action = args[1].As<Int32>()->Value();
+  int fd = args[2].As<Int32>()->Value();
+  int mask = args[3].As<Int32>()->Value();
   struct epoll_event event;
   event.events = mask;
   event.data.fd = fd;
-  args.GetReturnValue().Set(Integer::New(isolate, epoll_ctl(loopfd, 
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), epoll_ctl(loopfd, 
     action, fd, &event)));
 }
 
 void just::loop::EpollCreate(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int flags = args[0]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, epoll_create1(flags)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), epoll_create1(args[0].As<Int32>()->Value())));
 }
 
+#ifdef FASTBUFFERS
 void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int loopfd = args[0]->Int32Value(context).ToChecked();
+  int loopfd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
+  }
+  struct epoll_event* events = (struct epoll_event*)data;
+  int argc = args.Length();
+  int timeout = args[2].As<Int32>()->Value();
+  int size = args[3].As<Int32>()->Value();
+  int r = epoll_wait(loopfd, events, size, timeout);
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
+}
+#else
+void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
+  int loopfd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   struct epoll_event* events = (struct epoll_event*)backing->Data();
-  int size = backing->ByteLength() / 12;
-  int timeout = -1;
-  int argc = args.Length();
-  if (argc > 2) {
-    timeout = args[2]->Int32Value(context).ToChecked();
+  int timeout = args[2].As<Int32>()->Value();
+  int size = args[3].As<Int32>()->Value();
+  int r = epoll_wait(loopfd, events, size, timeout);
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
+}
+#endif
+
+#ifdef FASTBUFFERS
+void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
+  Isolate *isolate = args.GetIsolate();
+  int loopfd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  void* data = buf->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    data = backing->Data();
+    buf->SetAlignedPointerInInternalField(1, data);
   }
+  struct epoll_event* events = (struct epoll_event*)data;
+  int timeout = args[2].As<Int32>()->Value();
+  int size = args[3].As<Int32>()->Value();
   if (argc > 3) {
     Local<ArrayBuffer> buf = args[3].As<ArrayBuffer>();
     std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
@@ -1823,12 +1885,34 @@ void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
   int r = epoll_wait(loopfd, events, size, timeout);
   args.GetReturnValue().Set(Integer::New(isolate, r));
 }
+#else
+void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
+  Isolate *isolate = args.GetIsolate();
+  int loopfd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
+  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+  struct epoll_event* events = (struct epoll_event*)backing->Data();
+  int timeout = args[2].As<Int32>()->Value();
+  int size = args[3].As<Int32>()->Value();
+  if (args.Length() > 4) {
+    Local<ArrayBuffer> buf = args[4].As<ArrayBuffer>();
+    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
+    sigset_t* set = static_cast<sigset_t*>(backing->Data());
+    int r = epoll_pwait(loopfd, events, size, timeout, set);
+    args.GetReturnValue().Set(Integer::New(isolate, r));
+    return;
+  }
+  int r = epoll_wait(loopfd, events, size, timeout);
+  args.GetReturnValue().Set(Integer::New(isolate, r));
+}
+#endif
 
 void just::loop::Init(Isolate* isolate, Local<ObjectTemplate> target) {
   Local<ObjectTemplate> loop = ObjectTemplate::New(isolate);
   SET_METHOD(isolate, loop, "control", EpollCtl);
   SET_METHOD(isolate, loop, "create", EpollCreate);
   SET_METHOD(isolate, loop, "wait", EpollWait);
+  SET_METHOD(isolate, loop, "pwait", EpollPWait);
   SET_VALUE(isolate, loop, "EPOLL_CTL_ADD", Integer::New(isolate, 
     EPOLL_CTL_ADD));
   SET_VALUE(isolate, loop, "EPOLL_CTL_MOD", Integer::New(isolate, 
@@ -1851,7 +1935,6 @@ void just::loop::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 
 void just::fs::ReadFile(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value fname(isolate, args[0]);
   Local<String> str = just::ReadFile(isolate, *fname);
   args.GetReturnValue().Set(str);
@@ -1859,51 +1942,40 @@ void just::fs::ReadFile(const FunctionCallbackInfo<Value> &args) {
 
 void just::fs::Unlink(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value fname(isolate, args[0]);
   args.GetReturnValue().Set(Integer::New(isolate, unlink(*fname)));
 }
 
 void just::fs::Open(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   String::Utf8Value fname(isolate, args[0]);
   int argc = args.Length();
   int flags = O_RDONLY;
   if (argc > 1) {
-    flags = args[1]->Int32Value(context).ToChecked();
+    flags = args[1].As<Int32>()->Value();
   }
   int mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
   if (argc > 2) {
-    mode = args[2]->Int32Value(context).ToChecked();
+    mode = args[2].As<Int32>()->Value();
   }
   args.GetReturnValue().Set(Integer::New(isolate, open(*fname, flags, mode)));
 }
 
 void just::fs::Ioctl(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  int flags = args[1]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, ioctl(fd, flags)));
+  int fd = args[0].As<Int32>()->Value();
+  int flags = args[1].As<Int32>()->Value();
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), ioctl(fd, flags)));
 }
 
 void just::fs::Ftruncate(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
-  off_t length = args[1]->Uint32Value(context).ToChecked();
-  args.GetReturnValue().Set(Integer::New(isolate, ftruncate(fd, length)));
+  int fd = args[0].As<Int32>()->Value();
+  off_t length = args[1].As<Int32>()->Value();
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), ftruncate(fd, length)));
 }
 
 void just::fs::Fstat(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   Local<BigUint64Array> answer = args[1].As<BigUint64Array>();
   Local<ArrayBuffer> ab = answer->Buffer();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
@@ -1936,7 +2008,6 @@ void just::fs::Fstat(const FunctionCallbackInfo<Value> &args) {
 
 void just::fs::Rmdir(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value path(isolate, args[0]);
   int rc = rmdir(*path);
   args.GetReturnValue().Set(Integer::New(isolate, rc));
@@ -1944,7 +2015,6 @@ void just::fs::Rmdir(const FunctionCallbackInfo<Value> &args) {
 
 void just::fs::Rename(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   String::Utf8Value source(isolate, args[0]);
   String::Utf8Value dest(isolate, args[1]);
   args.GetReturnValue().Set(Integer::New(isolate, rename(*source, *dest)));
@@ -1952,13 +2022,11 @@ void just::fs::Rename(const FunctionCallbackInfo<Value> &args) {
 
 void just::fs::Mkdir(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   String::Utf8Value path(isolate, args[0]);
   int mode = S_IRWXO | S_IRWXG | S_IRWXU;
   int argc = args.Length();
   if (argc > 1) {
-    mode = args[1]->Int32Value(context).ToChecked();
+    mode = args[1].As<Int32>()->Value();
   }
   int rc = mkdir(*path, mode);
   args.GetReturnValue().Set(Integer::New(isolate, rc));
@@ -1966,7 +2034,6 @@ void just::fs::Mkdir(const FunctionCallbackInfo<Value> &args) {
 
 void just::fs::Readdir(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   String::Utf8Value path(isolate, args[0]);
   Local<Array> answer = args[1].As<Array>();
@@ -2124,14 +2191,11 @@ void just::versions::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::tty::TtyName(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Int32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> out = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = out->GetBackingStore();
   int r = ttyname_r(fd, (char*)backing->Data(), backing->ByteLength());
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
 
 void just::tty::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -2299,43 +2363,37 @@ size_t just::encode::base64_encode(const char* src,
 }
 
 void just::encode::HexEncode(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> absource = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> source = absource->GetBackingStore();
   Local<ArrayBuffer> abdest = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> dest = abdest->GetBackingStore();
   int len = source->ByteLength();
   if (args.Length() > 2) {
-    len = args[2]->Uint32Value(context).ToChecked();
+    len = args[2].As<Int32>()->Value();
   }
   int off = 0;
   if (args.Length() > 3) {
-    off = args[3]->Uint32Value(context).ToChecked();
+    off = args[3].As<Int32>()->Value();
   }
   char* dst = (char*)dest->Data() + off;
   size_t bytes = hex_encode((const char*)source->Data(), len, 
     dst, dest->ByteLength() - off);
-  args.GetReturnValue().Set(Integer::New(isolate, bytes));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), bytes));
 }
 
 void just::encode::Base64Encode(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> absource = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> source = absource->GetBackingStore();
   Local<ArrayBuffer> abdest = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> dest = abdest->GetBackingStore();
   int len = source->ByteLength();
   if (args.Length() > 2) {
-    len = args[2]->Uint32Value(context).ToChecked();
+    len = args[2].As<Int32>()->Value();
   }
   size_t dlen = base64_encoded_size(len);
   size_t bytes = base64_encode((const char*)source->Data(), len, 
     (char*)dest->Data(), dlen);
-  args.GetReturnValue().Set(Integer::New(isolate, bytes));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), bytes));
 }
 
 void just::encode::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -2346,10 +2404,8 @@ void just::encode::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::inspector::Enable(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  client = new InspectorClient(context, true);
+  // TODO - static reference?
+  client = new InspectorClient(args.GetIsolate()->GetCurrentContext(), true);
 }
 
 void just::inspector::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -2456,19 +2512,16 @@ void just::sha1::shacalc(const char* src, char* hash, int bytelength)
 }
 
 void just::sha1::Hash(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> absource = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> source = absource->GetBackingStore();
   Local<ArrayBuffer> abdest = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> dest = abdest->GetBackingStore();
   int len = source->ByteLength();
   if (args.Length() > 3) {
-    len = args[3]->Uint32Value(context).ToChecked();
+    len = args[3].As<Int32>()->Value();
   }
   shacalc((const char*)source->Data(), (char*)dest->Data(), len);
-  args.GetReturnValue().Set(Integer::New(isolate, 20));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), 20));
 }
 
 void just::sha1::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -2478,44 +2531,36 @@ void just::sha1::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 }
 
 void just::signals::SignalFD(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> buf = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   sigset_t* set = static_cast<sigset_t*>(backing->Data());
   int flags = SFD_NONBLOCK | SFD_CLOEXEC;
   if (args.Length() > 1) {
-    flags = args[1]->Int32Value(context).ToChecked();
+    flags = args[1].As<Int32>()->Value();
   }
   int fd = signalfd(-1, set, flags);
-  args.GetReturnValue().Set(Integer::New(isolate, fd));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), fd));
 }
 
 void just::signals::SigEmptySet(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<ArrayBuffer> buf = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   sigset_t* set = static_cast<sigset_t*>(backing->Data());
-  int r = sigemptyset(set);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sigemptyset(set)));
 }
 
 void just::signals::SigProcMask(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> buf = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   sigset_t* set = static_cast<sigset_t*>(backing->Data());
   int action = SIG_SETMASK;
   if (args.Length() > 1) {
-    action = args[1]->Int32Value(context).ToChecked();
+    action = args[1].As<Int32>()->Value();
   }
   int direction = 0;
   if (args.Length() > 2) {
-    direction = args[2]->Int32Value(context).ToChecked();
+    direction = args[2].As<Int32>()->Value();
   }
   int r = 0;
   if (direction == 1) {
@@ -2531,14 +2576,11 @@ void just::signals::SigProcMask(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::signals::SigAddSet(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
   Local<ArrayBuffer> buf = args[0].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
   sigset_t* set = static_cast<sigset_t*>(backing->Data());
-  int signum = args[1]->Int32Value(context).ToChecked();
-  args.GetReturnValue().Set(BigInt::New(isolate, sigaddset(set, signum)));
+  int signum = args[1].As<Int32>()->Value();
+  args.GetReturnValue().Set(BigInt::New(args.GetIsolate(), sigaddset(set, signum)));
 }
 
 void just::signals::Init(Isolate* isolate, Local<ObjectTemplate> target) {
@@ -2570,7 +2612,6 @@ void* just::thread::startThread(void *data) {
 void just::thread::Spawn(const FunctionCallbackInfo<Value> &args) {
   // TODO: we have to free all the allocated memory when the thread finishes
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   int argc = args.Length();
   // get source code to execute in thread
@@ -2610,7 +2651,7 @@ void just::thread::Spawn(const FunctionCallbackInfo<Value> &args) {
   }
   // socketpair fd for IPC
   if (argc > 3) {
-    ctx->fd = args[3]->Int32Value(context).ToChecked();
+    ctx->fd = args[3].As<Int32>()->Value();
   }
   // overwrite arg[0] with thread name or passed in name for thread
   if (argc > 4) {
@@ -2633,8 +2674,8 @@ void just::thread::Spawn(const FunctionCallbackInfo<Value> &args) {
 
 void just::thread::Join(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
+  // todo: can we do without context here?
   Local<BigInt> bi = args[0]->ToBigInt(context).ToLocalChecked();
   bool lossless = true;
   pthread_t tid = (pthread_t)bi->Uint64Value(&lossless);
@@ -2649,8 +2690,8 @@ void just::thread::Join(const FunctionCallbackInfo<Value> &args) {
 
 void just::thread::TryJoin(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
+  // todo: can we do without context here?
   Local<BigInt> bi = args[0]->ToBigInt(context).ToLocalChecked();
   Local<Array> answer = args[1].As<Array>();
   bool lossless = true;
@@ -2662,20 +2703,16 @@ void just::thread::TryJoin(const FunctionCallbackInfo<Value> &args) {
 }
 
 void just::thread::Self(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  pthread_t tid = pthread_self();
-  args.GetReturnValue().Set(BigInt::New(isolate, (long)tid));
+  args.GetReturnValue().Set(BigInt::New(args.GetIsolate(), (long)pthread_self()));
 }
 
 void just::thread::SetAffinity(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   Local<BigInt> bi = args[0]->ToBigInt(context).ToLocalChecked();
   bool lossless = true;
   pthread_t tid = (pthread_t)bi->Uint64Value(&lossless);
-  int cpu = args[1]->Int32Value(context).ToChecked();
+  int cpu = args[1].As<Int32>()->Value();
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(cpu, &cpuset);
@@ -2685,12 +2722,11 @@ void just::thread::SetAffinity(const FunctionCallbackInfo<Value> &args) {
 
 void just::thread::GetAffinity(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   Local<BigInt> bi = args[0]->ToBigInt(context).ToLocalChecked();
   bool lossless = true;
   pthread_t tid = (pthread_t)bi->Uint64Value(&lossless);
-  int cpu = args[1]->Int32Value(context).ToChecked();
+  int cpu = args[1].As<Int32>()->Value();
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(cpu, &cpuset);
@@ -2721,17 +2757,17 @@ void just::thread::Init(Isolate* isolate, Local<ObjectTemplate> target,
   SET_MODULE(isolate, target, "thread", module);
 }
 
+#ifdef FASTBUFFERS
 void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0]->Uint32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   Local<Array> answer = args[2].As<Array>();
   struct iovec buf;
+  int len = args[3].As<Int32>()->Value();
   buf.iov_base = backing->Data();
-  buf.iov_len = backing->ByteLength();
+  buf.iov_len = len;
   char ip[INET_ADDRSTRLEN];
   int iplen = sizeof ip;
   struct sockaddr_storage peer;
@@ -2754,21 +2790,85 @@ void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   answer->Set(context, 1, Integer::New(isolate, ntohs(a4->sin_port))).Check();
   args.GetReturnValue().Set(Integer::New(isolate, bytes));
 }
-
-void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
+#else
+void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
-  HandleScope handleScope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
+  void* data = ab->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+    data = backing->Data();
+    ab->SetAlignedPointerInInternalField(1, data);
+  }
+  Local<Array> answer = args[2].As<Array>();
+  struct iovec buf;
+  int len = args[3].As<Int32>()->Value();
+  buf.iov_base = data;
+  buf.iov_len = len;
+  char ip[INET_ADDRSTRLEN];
+  int iplen = sizeof ip;
+  struct sockaddr_storage peer;
+  struct msghdr h;
+  memset(&h, 0, sizeof(h));
+  memset(&peer, 0, sizeof(peer));
+  h.msg_name = &peer;
+  h.msg_namelen = sizeof(peer);
+  h.msg_iov = &buf;
+  h.msg_iovlen = 1;
+  const sockaddr_in *a4 = reinterpret_cast<const sockaddr_in *>(&peer);
+  int bytes = recvmsg(fd, &h, 0);
+  if (bytes <= 0) {
+    args.GetReturnValue().Set(Integer::New(isolate, bytes));
+    return;
+  }
+  inet_ntop(AF_INET, &a4->sin_addr, ip, iplen);
+  answer->Set(context, 0, String::NewFromUtf8(isolate, ip, 
+    v8::NewStringType::kNormal, strlen(ip)).ToLocalChecked()).Check();
+  answer->Set(context, 1, Integer::New(isolate, ntohs(a4->sin_port))).Check();
+  args.GetReturnValue().Set(Integer::New(isolate, bytes));
+}
+#endif
+
+#ifdef FASTBUFFERS
+void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   int argc = args.Length();
-  int fd = args[0]->Uint32Value(context).ToChecked();
+  int fd = args[0].As<Int32>()->Value();
+  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
+  void* data = ab->GetAlignedPointerFromInternalField(1);
+  if (data == NULL) {
+    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
+    data = backing->Data();
+    ab->SetAlignedPointerInInternalField(1, data);
+  }
+  String::Utf8Value address(args.GetIsolate(), args[2]);
+  int port = args[3].As<Int32>()->Value();
+  size_t len = args[4].As<Int32>()->Value();
+  struct iovec buf;
+  buf.iov_base = data;
+  buf.iov_len = len;
+  struct msghdr h;
+  memset(&h, 0, sizeof h);
+  struct sockaddr_in client_addr;
+  client_addr.sin_family = AF_INET;
+  client_addr.sin_port = htons(port);
+  inet_aton(*address, &client_addr.sin_addr);
+  bzero(&(client_addr.sin_zero), 8);
+  h.msg_name = &client_addr;
+  h.msg_namelen = sizeof(struct sockaddr_in);
+  h.msg_iov = &buf;
+  h.msg_iovlen = 1;
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sendmsg(fd, &h, 0)));
+}
+#else
+void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
+  int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
   std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
   String::Utf8Value address(args.GetIsolate(), args[2]);
-  int port = args[3]->Uint32Value(context).ToChecked();
-  size_t len = backing->ByteLength();
-  if (argc > 4) {
-    len = args[4]->Uint32Value(context).ToChecked();
-  }
+  int port = args[3].As<Int32>()->Value();
+  size_t len = args[4].As<Int32>()->Value();
   struct iovec buf;
   buf.iov_base = backing->Data();
   buf.iov_len = len;
@@ -2783,8 +2883,9 @@ void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   h.msg_namelen = sizeof(struct sockaddr_in);
   h.msg_iov = &buf;
   h.msg_iovlen = 1;
-  args.GetReturnValue().Set(Integer::New(isolate, sendmsg(fd, &h, 0)));
+  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sendmsg(fd, &h, 0)));
 }
+#endif
 
 void just::udp::Init(Isolate* isolate, Local<ObjectTemplate> target) {
   Local<ObjectTemplate> module = ObjectTemplate::New(isolate);
@@ -2796,7 +2897,6 @@ void just::udp::Init(Isolate* isolate, Local<ObjectTemplate> target) {
 void just::PromiseRejectCallback(PromiseRejectMessage message) {
   Local<Promise> promise = message.GetPromise();
   Isolate* isolate = promise->GetIsolate();
-  HandleScope handle_scope(isolate);
   Local<Context> context = isolate->GetCurrentContext();
   PromiseRejectEvent event = message.GetEvent();
   const unsigned int argc = 3;

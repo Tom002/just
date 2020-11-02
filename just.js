@@ -165,14 +165,14 @@ function main () {
   ArrayBuffer.prototype.writeString = function(str, off = 0) { // eslint-disable-line
     return sys.writeString(this, str, off)
   }
-  ArrayBuffer.prototype.readString = function (len, off) { // eslint-disable-line
+  ArrayBuffer.prototype.readString = function (len = this.byteLength, off = 0) { // eslint-disable-line
     return sys.readString(this, len, off)
   }
   ArrayBuffer.prototype.getAddress = function () { // eslint-disable-line
     return sys.getAddress(this)
   }
-  ArrayBuffer.prototype.copyFrom = function (ab, off, len, off2 = 0) { // eslint-disable-line
-    return sys.memcpy(this, ab, off, len, off2)
+  ArrayBuffer.prototype.copyFrom = function (ab, off = 0, len = this.byteLength, off2 = 0) { // eslint-disable-line
+    return sys.memcpy(this, ab, len, off, off2)
   }
   ArrayBuffer.fromString = str => sys.calloc(1, str)
   String.byteLength = sys.utf8Length
