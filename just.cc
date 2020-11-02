@@ -760,7 +760,6 @@ void just::sys::FreeMappedMemory(void* buf, size_t length, void* data) {
   munmap(buf, length);
 }
 
-#ifdef FASTBUFFERS
 void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
   Local<ArrayBuffer> abdest = args[0].As<ArrayBuffer>();
   void* data = abdest->GetAlignedPointerFromInternalField(1);
@@ -794,31 +793,6 @@ void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
   memcpy(dest, source, len);
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), len));
 }
-#else
-void just::sys::Memcpy(const FunctionCallbackInfo<Value> &args) {
-  Local<ArrayBuffer> abdest = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bdest = abdest->GetBackingStore();
-  char *dest = static_cast<char *>(bdest->Data());
-  Local<ArrayBuffer> absource = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> bsource = absource->GetBackingStore();
-  char *source = static_cast<char *>(bsource->Data());
-  int argc = args.Length();
-  int len = args[2].As<Int32>()->Value();
-  int off = 0;
-  if (argc > 3) {
-    off = args[3].As<Int32>()->Value();
-  }
-  int off2 = 0;
-  if (argc > 4) {
-    off2 = args[4].As<Int32>()->Value();
-  }
-  if (len == 0) return;
-  dest = dest + off;
-  source = source + off2;
-  memcpy(dest, source, len);
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), len));
-}
-#endif
 
 void just::sys::Utf8Length(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
@@ -866,7 +840,6 @@ void just::sys::Calloc(const FunctionCallbackInfo<Value> &args) {
   }
 }
 
-#ifdef FASTBUFFERS
 void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
   void* data = ab->GetAlignedPointerFromInternalField(1);
@@ -884,25 +857,6 @@ void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), source, 
     NewStringType::kNormal, len).ToLocalChecked());
 }
-#else
-void just::sys::ReadString(const FunctionCallbackInfo<Value> &args) {
-  Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  char *data = static_cast<char *>(backing->Data());
-  int len = backing->ByteLength();
-  int argc = args.Length();
-  if (argc > 1) {
-    len = args[1].As<Int32>()->Value();
-  }
-  int off = 0;
-  if (argc > 2) {
-    off = args[2].As<Int32>()->Value();
-  }
-  char* source = data + off;
-  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), source, 
-    NewStringType::kNormal, len).ToLocalChecked());
-}
-#endif
 
 void just::sys::GetAddress(const FunctionCallbackInfo<Value> &args) {
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
@@ -920,7 +874,6 @@ void just::sys::GetStringAddress(const FunctionCallbackInfo<Value> &args) {
 }
 */
 
-#ifdef FASTBUFFERS
 void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
@@ -941,24 +894,6 @@ void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
   int written = str->WriteUtf8(isolate, source, len, &nchars, v8::String::HINT_MANY_WRITES_EXPECTED | v8::String::NO_NULL_TERMINATION);
   args.GetReturnValue().Set(Integer::New(isolate, written));
 }
-#else
-void just::sys::WriteString(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  Local<ArrayBuffer> ab = args[0].As<ArrayBuffer>();
-  Local<String> str = args[1].As<String>();
-  int off = 0;
-  if (args.Length() > 2) {
-    off = args[2].As<Int32>()->Value();
-  }
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  char *data = static_cast<char *>(backing->Data());
-  char* source = data + off;
-  int len = str->Utf8Length(isolate);
-  int nchars = 0;
-  int written = str->WriteUtf8(isolate, source, len, &nchars, v8::String::HINT_MANY_WRITES_EXPECTED | v8::String::NO_NULL_TERMINATION);
-  args.GetReturnValue().Set(Integer::New(isolate, written));
-}
-#endif
 
 void just::sys::Fcntl(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
@@ -1479,7 +1414,6 @@ void just::net::Seek(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
 
-#ifdef FASTBUFFERS
 void just::net::Read(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1497,27 +1431,7 @@ void just::net::Read(const FunctionCallbackInfo<Value> &args) {
   }
   args.GetReturnValue().Set(Integer::New(isolate, read(fd, data, args[2].As<Int32>()->Value())));
 }
-#else
-void just::net::Read(const FunctionCallbackInfo<Value> &args) {
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  int argc = args.Length();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  int off = 0;
-  if (argc > 2) {
-    off = args[2].As<Int32>()->Value();
-  }
-  int len = backing->ByteLength() - off;
-  if (argc > 3) {
-    len = args[3].As<Int32>()->Value();
-  }
-  char* data = (char*)backing->Data() + off;
-  int r = read(fd, data, len);
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
-}
-#endif
 
-#ifdef FASTBUFFERS
 void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1540,30 +1454,7 @@ void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
   }
   args.GetReturnValue().Set(Integer::New(isolate, recv(fd, data, args[2].As<Int32>()->Value(), flags)));
 }
-#else
-void just::net::Recv(const FunctionCallbackInfo<Value> &args) {
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  int argc = args.Length();
-  int flags = 0;
-  int off = 0;
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  int len = backing->ByteLength() - off;
-  if (argc > 2) {
-    len = args[2].As<Int32>()->Value();
-  }
-  if (argc > 3) {
-    off = args[3].As<Int32>()->Value();
-  }
-  if (argc > 4) {
-    flags = args[4].As<Int32>()->Value();
-  }
-  const char* data = (const char*)backing->Data() + off;
-  int r = recv(fd, (void*)data, len, flags);
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
-}
-#endif
-#ifdef FASTBUFFERS
+
 void just::net::Write(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1581,29 +1472,7 @@ void just::net::Write(const FunctionCallbackInfo<Value> &args) {
   }
   args.GetReturnValue().Set(Integer::New(isolate, write(fd, data, args[2].As<Int32>()->Value())));
 }
-#else
-void just::net::Write(const FunctionCallbackInfo<Value> &args) {
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  int argc = args.Length();
-  int len = 0;
-  if (argc > 2) {
-    len = args[2].As<Int32>()->Value();
-  } else {
-    len = backing->ByteLength();
-  }
-  int off = 0;
-  if (argc > 3) {
-    off = args[3].As<Int32>()->Value();
-  }
-  char* buf = (char*)backing->Data() + off;
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), write(fd, 
-    buf, len)));
-}
-#endif
 
-#ifdef FASTBUFFERS
 void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1611,23 +1480,12 @@ void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
     *str, str.length())));
 }
-#else
-void just::net::WriteString(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  int fd = args[0].As<Int32>()->Value();
-  String::Utf8Value str(isolate, args[1]);
-  int len = str.length();
-  args.GetReturnValue().Set(Integer::New(isolate, write(fd, 
-    *str, len)));
-}
-#endif
 
 void just::net::Writev(const FunctionCallbackInfo<Value> &args) {
   fprintf(stderr, "Not Implemented\n");
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), 0));
 }
 
-#ifdef FASTBUFFERS
 void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1650,32 +1508,7 @@ void just::net::Send(const FunctionCallbackInfo<Value> &args) {
   }
   args.GetReturnValue().Set(Integer::New(isolate, send(fd, data, args[2].As<Int32>()->Value(), flags)));
 }
-#else
-void just::net::Send(const FunctionCallbackInfo<Value> &args) {
-  Local<Object> obj;
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  int argc = args.Length();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  int len = backing->ByteLength();
-  if (argc > 2) {
-    len = args[2].As<Int32>()->Value();
-  }
-  int off = 0;
-  if (argc > 3) {
-    off = args[3].As<Int32>()->Value();
-  }
-  int flags = MSG_NOSIGNAL;
-  if (argc > 4) {
-    flags = args[4].As<Int32>()->Value();
-  }
-  char* out = (char*)backing->Data() + off;
-  int r = send(fd, out, len, flags);
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
-}
-#endif
 
-#ifdef FASTBUFFERS
 void just::net::SendString(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int fd = args[0].As<Int32>()->Value();
@@ -1687,21 +1520,6 @@ void just::net::SendString(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(Integer::New(isolate, send(fd, 
     *str, str.length(), flags)));
 }
-#else
-void just::net::SendString(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  int fd = args[0].As<Int32>()->Value();
-  String::Utf8Value str(isolate, args[1]);
-  int argc = args.Length();
-  int flags = MSG_NOSIGNAL;
-  if (argc > 2) {
-    flags = args[2].As<Int32>()->Value();
-  }
-  int len = str.length();
-  args.GetReturnValue().Set(Integer::New(isolate, send(fd, 
-    *str, len, flags)));
-}
-#endif
 
 void just::net::Close(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), close(args[0].As<Int32>()->Value())));
@@ -1830,7 +1648,6 @@ void just::loop::EpollCreate(const FunctionCallbackInfo<Value> &args) {
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), epoll_create1(args[0].As<Int32>()->Value())));
 }
 
-#ifdef FASTBUFFERS
 void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
   int loopfd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
@@ -1846,20 +1663,7 @@ void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
   int r = epoll_wait(loopfd, events, size, timeout);
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
 }
-#else
-void just::loop::EpollWait(const FunctionCallbackInfo<Value> &args) {
-  int loopfd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  struct epoll_event* events = (struct epoll_event*)backing->Data();
-  int timeout = args[2].As<Int32>()->Value();
-  int size = args[3].As<Int32>()->Value();
-  int r = epoll_wait(loopfd, events, size, timeout);
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), r));
-}
-#endif
 
-#ifdef FASTBUFFERS
 void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   int loopfd = args[0].As<Int32>()->Value();
@@ -1884,27 +1688,6 @@ void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
   int r = epoll_wait(loopfd, events, size, timeout);
   args.GetReturnValue().Set(Integer::New(isolate, r));
 }
-#else
-void just::loop::EpollPWait(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  int loopfd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> buf = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-  struct epoll_event* events = (struct epoll_event*)backing->Data();
-  int timeout = args[2].As<Int32>()->Value();
-  int size = args[3].As<Int32>()->Value();
-  if (args.Length() > 4) {
-    Local<ArrayBuffer> buf = args[4].As<ArrayBuffer>();
-    std::shared_ptr<BackingStore> backing = buf->GetBackingStore();
-    sigset_t* set = static_cast<sigset_t*>(backing->Data());
-    int r = epoll_pwait(loopfd, events, size, timeout, set);
-    args.GetReturnValue().Set(Integer::New(isolate, r));
-    return;
-  }
-  int r = epoll_wait(loopfd, events, size, timeout);
-  args.GetReturnValue().Set(Integer::New(isolate, r));
-}
-#endif
 
 void just::loop::Init(Isolate* isolate, Local<ObjectTemplate> target) {
   Local<ObjectTemplate> loop = ObjectTemplate::New(isolate);
@@ -2756,7 +2539,6 @@ void just::thread::Init(Isolate* isolate, Local<ObjectTemplate> target,
   SET_MODULE(isolate, target, "thread", module);
 }
 
-#ifdef FASTBUFFERS
 void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   Isolate *isolate = args.GetIsolate();
   Local<Context> context = isolate->GetCurrentContext();
@@ -2790,48 +2572,7 @@ void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
   answer->Set(context, 1, Integer::New(isolate, ntohs(a4->sin_port))).Check();
   args.GetReturnValue().Set(Integer::New(isolate, bytes));
 }
-#else
-void just::udp::RecvMsg(const FunctionCallbackInfo<Value> &args) {
-  Isolate *isolate = args.GetIsolate();
-  Local<Context> context = isolate->GetCurrentContext();
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  void* data = ab->GetAlignedPointerFromInternalField(1);
-  if (data == NULL) {
-    std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-    data = backing->Data();
-    ab->SetAlignedPointerInInternalField(1, data);
-  }
-  Local<Array> answer = args[2].As<Array>();
-  struct iovec buf;
-  int len = args[3].As<Int32>()->Value();
-  buf.iov_base = data;
-  buf.iov_len = len;
-  char ip[INET_ADDRSTRLEN];
-  int iplen = sizeof ip;
-  struct sockaddr_storage peer;
-  struct msghdr h;
-  memset(&h, 0, sizeof(h));
-  memset(&peer, 0, sizeof(peer));
-  h.msg_name = &peer;
-  h.msg_namelen = sizeof(peer);
-  h.msg_iov = &buf;
-  h.msg_iovlen = 1;
-  const sockaddr_in *a4 = reinterpret_cast<const sockaddr_in *>(&peer);
-  int bytes = recvmsg(fd, &h, 0);
-  if (bytes <= 0) {
-    args.GetReturnValue().Set(Integer::New(isolate, bytes));
-    return;
-  }
-  inet_ntop(AF_INET, &a4->sin_addr, ip, iplen);
-  answer->Set(context, 0, String::NewFromUtf8(isolate, ip, 
-    v8::NewStringType::kNormal, strlen(ip)).ToLocalChecked()).Check();
-  answer->Set(context, 1, Integer::New(isolate, ntohs(a4->sin_port))).Check();
-  args.GetReturnValue().Set(Integer::New(isolate, bytes));
-}
-#endif
 
-#ifdef FASTBUFFERS
 void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   int fd = args[0].As<Int32>()->Value();
   Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
@@ -2860,31 +2601,6 @@ void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
   h.msg_iovlen = 1;
   args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sendmsg(fd, &h, 0)));
 }
-#else
-void just::udp::SendMsg(const FunctionCallbackInfo<Value> &args) {
-  int fd = args[0].As<Int32>()->Value();
-  Local<ArrayBuffer> ab = args[1].As<ArrayBuffer>();
-  std::shared_ptr<BackingStore> backing = ab->GetBackingStore();
-  String::Utf8Value address(args.GetIsolate(), args[2]);
-  int port = args[3].As<Int32>()->Value();
-  size_t len = args[4].As<Int32>()->Value();
-  struct iovec buf;
-  buf.iov_base = backing->Data();
-  buf.iov_len = len;
-  struct msghdr h;
-  memset(&h, 0, sizeof h);
-  struct sockaddr_in client_addr;
-  client_addr.sin_family = AF_INET;
-  client_addr.sin_port = htons(port);
-  inet_aton(*address, &client_addr.sin_addr);
-  bzero(&(client_addr.sin_zero), 8);
-  h.msg_name = &client_addr;
-  h.msg_namelen = sizeof(struct sockaddr_in);
-  h.msg_iov = &buf;
-  h.msg_iovlen = 1;
-  args.GetReturnValue().Set(Integer::New(args.GetIsolate(), sendmsg(fd, &h, 0)));
-}
-#endif
 
 void just::udp::Init(Isolate* isolate, Local<ObjectTemplate> target) {
   Local<ObjectTemplate> module = ObjectTemplate::New(isolate);
